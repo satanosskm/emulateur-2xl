@@ -1,0 +1,5 @@
+# Dépendances d'exécution (Windows, macOS, Linux)
+numpy>=1.26,<3
+soundfile>=0.12
+sounddevice>=0.4.6
+Pillow>=10

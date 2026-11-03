@@ -1,0 +1,27 @@
+[project]
+name = "emulateur-2xl"
+version = "2.1.2"
+description = "Émulateur robot 2-XL — cassettes françaises à quatre pistes, par Satanos"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.26,<3",
+    "soundfile>=0.12",
+    "sounddevice>=0.4.6",
+    "Pillow>=10",
+]
+
+[project.scripts]
+2xl = "twoxl.__main__:main"
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]

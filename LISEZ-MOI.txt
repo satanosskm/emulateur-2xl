@@ -1,0 +1,16 @@
+Émulateur robot 2-XL
+Projet de Satanos. Réalisé avec une IA, via Arena en mode agent.
+
+1. Démarre Emulateur-2XL.exe sous Windows. Aucune installation n'est nécessaire.
+2. Place tes quatre fichiers audio dans un sous-dossier de « cassettes » :
+      cassettes\Le Monde des animaux\Track1.mp3   (1 — OUI)
+      cassettes\Le Monde des animaux\Track2.mp3   (2 A — NON)
+      cassettes\Le Monde des animaux\Track3.mp3   (3 B — VRAI)
+      cassettes\Le Monde des animaux\Track4.mp3   (4 C — FAUX)
+3. Clique sur « Charger… », choisis la cassette, puis sur « Lecture ».
+4. Choisis la réponse avec les boutons de la photo, la barre PISTE,
+   ou les touches 1 2 3 4 (A, B et C fonctionnent aussi pour 2, 3 et 4).
+
+Le volume est à 100 % par défaut.
+Documentation : README.md
+Diagnostic : Emulateur-2XL.exe check
