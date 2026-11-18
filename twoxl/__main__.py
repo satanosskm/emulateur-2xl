@@ -199,6 +199,83 @@ def cmd_hotspot_test(args: argparse.Namespace) -> int:
     return 0 if not failures else 1
 
 
+def cmd_swap_test(args: argparse.Namespace) -> int:
+    """Vérifie qu'on peut changer de cassette sans relancer le programme.
+
+    Reproduit le scénario réel : lecture, changement de cassette, nouvelle
+    lecture. Le flux audio est simulé, donc aucune carte son n'est nécessaire.
+    """
+    from .engine import AudioEngine
+    from .library import load_cassette
+
+    class _LocalSink:
+        """Sortie factice : arrêtée, elle ne produit plus aucun bloc."""
+
+        samplerate = 44100
+
+        def __init__(self, callback, _on_status=None) -> None:
+            self.callback = callback
+            self.is_running = False
+
+        def start(self) -> None:
+            self.is_running = True
+
+        def stop(self) -> None:
+            self.is_running = False
+
+        def close(self) -> None:
+            self.is_running = False
+
+        def pump(self, blocks: int = 12) -> float:
+            if not self.is_running:
+                return 0.0
+            peak = 0.0
+            try:
+                import numpy as np
+            except Exception:
+                return 0.0
+            for _ in range(blocks):
+                buffer = np.zeros((1024, 2), dtype=np.float32)
+                self.callback(buffer, 1024)
+                peak = max(peak, float(np.abs(buffer).max()))
+            return peak
+
+    folder = args.folder
+    if not folder:
+        print("Indique le dossier d'une cassette : test-changement <dossier>")
+        return 2
+    cassette = load_cassette(folder)
+    engine = AudioEngine(sink_factory=_LocalSink)
+    failures = 0
+    try:
+        engine.load(cassette)
+        engine.play()
+        first = engine._sink.pump()
+        print(f"  lecture initiale : {'OK' if first > 0.001 else 'SILENCIEUX'} ({first:.3f})")
+        failures += 0 if first > 0.001 else 1
+
+        engine.load(cassette)
+        stopped = not engine._sink.is_running
+        print(f"  changement de cassette : flux arrêté comme attendu : {'OK' if stopped else 'NON'}")
+        engine.play()
+        second = engine._sink.pump()
+        print(f"  lecture après changement : {'OK' if second > 0.001 else 'SILENCIEUX'} ({second:.3f})")
+        failures += 0 if second > 0.001 else 1
+
+        engine.stop()
+        engine.play()
+        third = engine._sink.pump()
+        print(f"  lecture après arrêt : {'OK' if third > 0.001 else 'SILENCIEUX'} ({third:.3f})")
+        failures += 0 if third > 0.001 else 1
+    finally:
+        engine.close()
+    if failures:
+        print("Changement de cassette : ECHEC")
+        return 1
+    print("Changement de cassette : OK")
+    return 0
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     from . import ui
 
@@ -229,6 +306,11 @@ def build_parser() -> argparse.ArgumentParser:
     hotspot.add_argument("folder", nargs="?", help="cassette à utiliser pour le test")
     hotspot.set_defaults(func=cmd_hotspot_test)
 
+    swap = sub.add_parser(
+        "test-changement", help="vérifie la lecture après un changement de cassette"
+    )
+    swap.add_argument("folder", nargs="?", help="dossier d'une cassette de quatre pistes")
+    swap.set_defaults(func=cmd_swap_test)
     check = sub.add_parser("check", help="vérifie l'installation et l'audio")
     check.add_argument("folder", nargs="?", help="optionnel : analyse aussi ce dossier")
     check.set_defaults(func=cmd_check)

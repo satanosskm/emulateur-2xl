@@ -146,3 +146,71 @@ def test_play_before_load_fails() -> None:
 
     with pytest.raises(CassetteError):
         AudioEngine(sink_factory=FakeSink).play()
+
+
+# --------------------------------------------------------------------------
+# Changement de cassette en cours de session
+# --------------------------------------------------------------------------
+
+
+class StrictSink(FakeSink):
+    """Comme un vrai flux PortAudio : arrêté, il ne produit plus rien."""
+
+    def __init__(self, callback, *_args, **_kwargs) -> None:
+        super().__init__(callback, *_args, **_kwargs)
+        self.starts = 0
+
+    def start(self) -> None:
+        super().start()
+        self.starts += 1
+
+
+@pytest.fixture()
+def sample(tmp_path: Path):
+    paths = [_write(tmp_path / f"Track{i + 1}.wav", f) for i, f in enumerate(TONES)]
+    return build_cassette(paths, name="Changement")
+
+
+def _strict(engine: AudioEngine, cassette) -> tuple[StrictSink, object]:
+    engine.load(cassette)
+    engine.play()
+    return engine._sink, cassette
+
+
+def test_play_restarts_stream_after_cassette_change(sample) -> None:
+    """Régression : après un changement de cassette, la lecture restait muette."""
+    engine = AudioEngine(sink_factory=StrictSink)
+    engine.load(sample)
+    engine.play()
+    sink = engine._sink
+    assert sink.is_running is True
+    assert np.abs(pump(engine, 8)).max() > 0.01
+
+    engine.load(sample)            # changement de cassette : le flux s'arrête
+    assert sink.is_running is False
+
+    engine.play()                  # la lecture doit relancer le flux
+    assert sink.is_running is True
+    assert np.abs(pump(engine, 8)).max() > 0.01, "silence après changement de cassette"
+    engine.close()
+
+
+def test_repeated_cassette_changes_keep_playing(sample) -> None:
+    engine = AudioEngine(sink_factory=StrictSink)
+    for _ in range(3):
+        engine.load(sample)
+        engine.play()
+        assert np.abs(pump(engine, 6)).max() > 0.01
+        engine.stop()
+    engine.close()
+
+
+def test_play_after_stop_works_without_restart(sample) -> None:
+    engine = AudioEngine(sink_factory=StrictSink)
+    engine.load(sample)
+    engine.play()
+    pump(engine, 4)
+    engine.stop()
+    engine.play()
+    assert np.abs(pump(engine, 6)).max() > 0.01
+    engine.close()

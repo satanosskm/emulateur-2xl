@@ -392,6 +392,8 @@ class AudioEngine:
         self._events_lock = threading.Lock()
         self._io_lock = threading.RLock()
         self._closed = False
+        # Vrai tant que la sortie audio répond ; faux si elle a échoué.
+        self._stream_ok = False
 
     # -- état --------------------------------------------------------------
     @property
@@ -482,10 +484,15 @@ class AudioEngine:
     def play(self, position_ms: float | None = None) -> None:
         if self._cassette is None or not self._cassette.tracks:
             raise CassetteError("Aucune cassette chargée.")
-        if self._sink is None:
-            self._ensure_sink()
-        assert self._sink is not None
-        self.samplerate = int(self._sink.samplerate)
+        # Après un arrêt (y compris un changement de cassette), le flux
+        # PortAudio est stoppé : sans ce redémarrage, plus aucun bloc n'est
+        # calculé et la lecture reste silencieuse jusqu'au redémarrage de
+        # l'application.
+        self._ensure_sink()
+        if self._sink is not None:
+            with contextlib.suppress(Exception):
+                self._sink.start()
+            self.samplerate = int(self._sink.samplerate)
         start_ms = self.position_ms if position_ms is None else position_ms
         if start_ms >= self.duration_ms - 20:
             start_ms = 0.0
@@ -544,14 +551,33 @@ class AudioEngine:
     # -- sortie ------------------------------------------------------------
     def _ensure_sink(self) -> None:
         if self._sink is not None:
+            # Une sortie fermée par le système (changement de périphérique,
+            # veille, erreur de pilote) est remplacée par une neuve.
+            if getattr(self._sink, "is_running", True) or self._stream_ok:
+                return
+            self._discard_sink()
+        with contextlib.suppress(Exception):
+            self._sink = self._sink_factory(self._audio_callback, self._on_status_name)
+            self.samplerate = int(self._sink.samplerate)
+            self._stream_ok = True
             return
-        self._sink = self._sink_factory(self._audio_callback, self._on_status_name)
-        self.samplerate = int(self._sink.samplerate)
+        # Périphérique indisponible : la lecture se fera en silence, sans
+        # empêcher l'interface de fonctionner.
+        self._sink = None
+        self._stream_ok = False
+
+    def _discard_sink(self) -> None:
+        if self._sink is not None:
+            with contextlib.suppress(Exception):
+                self._sink.close()
+            self._sink = None
+        self._stream_ok = False
 
     def _on_status_name(self, message: str) -> None:
         self._emit("status", message)
 
     def _audio_callback(self, outdata: np.ndarray, frames: int) -> None:
+        self._stream_ok = True
         with self._io_lock:
             block = self._process(frames)
         outdata[:] = block
@@ -614,6 +640,7 @@ class AudioEngine:
         if cassette is None:
             return
         readers: list[_TrackReader] = []
+        track = None
         try:
             for track in cassette.tracks:
                 reader = _TrackReader(track, self.samplerate)
@@ -622,7 +649,11 @@ class AudioEngine:
         except Exception as exc:
             for reader in readers:
                 reader.close()
-            raise CassetteError(f"Lecture impossible : {exc}") from exc
+            name = f" ({track.filename})" if track is not None else ""
+            raise CassetteError(
+                f"Lecture impossible{name} : {exc}. Vérifie que le fichier "
+                "existe toujours et qu'il n'est pas ouvert ailleurs."
+            ) from exc
         self._readers = readers
 
     def _close_readers(self) -> None:

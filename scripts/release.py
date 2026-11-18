@@ -1,21 +1,20 @@
-"""Prépare une publication GitHub : archive du programme et brouillon de release.
+"""Prépare une publication GitHub : vérifie l'exécutable et liste les étapes.
 
 Usage (depuis la racine du dépôt, exécutable déjà compilé dans dist/) :
 
     python scripts/release.py
 
-Le script lit la version dans twoxl/__init__.py, vérifie que dist/Emulateur-2XL.exe existe,
-construit Emulateur-2XL-<version>-windows.zip et écrit docs/note-de-version.md.
+La version publiée ne contient qu'un seul fichier, ``dist/Emulateur-2XL.exe``.
+Le script rappelle la procédure et vérifie que tout est prêt.
 """
 
 from __future__ import annotations
 
-import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 EXE = ROOT / "dist" / "Emulateur-2XL.exe"
-FILES = ["README.md", "LICENSE", "LISEZ-MOI.txt"]
+NOTE = ROOT / "docs" / "note-de-version.md"
 
 
 def version() -> str:
@@ -26,32 +25,26 @@ def version() -> str:
 
 
 def main() -> None:
-    if not EXE.exists():
-        raise SystemExit("Compile d'abord l'exécutable : python tools/build.py")
-
     tag = version()
-    archive = ROOT / f"Emulateur-2XL-{tag}-windows.zip"
-    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as bundle:
-        bundle.write(EXE, "Emulateur-2XL/Emulateur-2XL.exe")
-        for name in FILES:
-            bundle.write(ROOT / name, f"Emulateur-2XL/{name}")
-        bundle.writestr("Emulateur-2XL/cassettes/LISEZ-MOI.txt", "Place ici un sous-dossier par cassette.\n")
+    problems = []
+    if not EXE.exists():
+        problems.append("dist/Emulateur-2XL.exe est absent : lance python tools/build.py")
+    if not NOTE.exists():
+        problems.append("docs/note-de-version.md est absent")
+    if problems:
+        raise SystemExit("\n".join(problems))
 
-    note = ROOT / "docs" / "note-de-version.md"
-    note.parent.mkdir(exist_ok=True)
-    note.write_text(
-        f"# Émulateur robot 2-XL {tag}\n\n"
-        "## Téléchargement\n\n"
-        f"Décompresse `{archive.name}` puis lance `Emulateur-2XL.exe`.\n\n"
-        "## Nouveautés\n\n"
-        "- Boutons A, B et C affichés à côté des réponses NON, VRAI et FAUX.\n"
-        "- Bouton principal qui alterne entre Lecture, Pause et Reprendre.\n"
-        "- Interface recentrée et palette plus sobre.\n"
-        "- Nom du projet : Émulateur robot 2-XL.\n",
-        encoding="utf-8",
-    )
-    print(f"Archive : {archive}")
-    print(f"Note de version : {note}")
+    size = EXE.stat().st_size / (1024 * 1024)
+    print(f"Version : {tag}")
+    print(f"Fichier : {EXE} ({size:.1f} Mio)")
+    print(f"Note     : {NOTE}")
+    print()
+    print("Publication :")
+    print(f"  1. git tag v{tag} && git push origin v{tag}   (publication automatique)")
+    print("  2. ou onglet Releases, Draft a new release, tag v" + tag)
+    print("  3. titre : Émulateur robot 2-XL " + tag)
+    print("  4. description : coller le contenu de docs/note-de-version.md")
+    print("  5. joindre uniquement dist/Emulateur-2XL.exe")
 
 
 if __name__ == "__main__":

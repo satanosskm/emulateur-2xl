@@ -1088,7 +1088,11 @@ class TwoXLApp:
         elif kind == "status" and payload:
             self.set_status(f"Audio : {payload}", WARN)
         elif kind == "error" and payload:
-            self.set_status(f"Erreur audio : {payload}", ERROR)
+            # Une piste illisible interrompt la lecture : l'état doit suivre,
+            # sinon le bouton reste bloqué sur « Pause ».
+            self.engine.stop()
+            self.set_status(payload, ERROR)
+            self._refresh_transport()
 
     def set_status(self, message: str, color: str = MUTED) -> None:
         self.status_label.config(text=message, fg=color)
